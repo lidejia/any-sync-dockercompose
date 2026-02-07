@@ -5,21 +5,28 @@ services:
     build:
       context: .
       dockerfile: Dockerfile-any-sync-init
+    entrypoint: ["/bin/bash", "-c", "/code/docker-generateconfig/init.sh && touch /ok && sleep infinity"]
+    init: true
+    healthcheck:
+      test: test -f /ok
+      interval: 5s
+      timeout: 10s
+      retries: 3
     volumes:
-      - ./.env:/code/.env:ro,Z
-      - ./docker-generateconfig:/code/docker-generateconfig:ro,Z
-      - ./etc:/code/etc:Z
-      - "${STORAGE_DIR}:/code/storage:Z"
+      - ./.env:/code/.env:ro,z
+      - ./docker-generateconfig:/code/docker-generateconfig:ro,z
+      - ./etc:/code/etc:z
+      - "${STORAGE_DIR}:/code/storage:z"
 
   mongo-1:
     depends_on:
       any-sync-init:
-        condition: service_completed_successfully
+        condition: service_healthy
     image: "mongo:${MONGO_VERSION}"
     restart: unless-stopped
     command: ["--replSet", "${MONGO_REPLICA_SET}", "--port", "${MONGO_1_PORT}"]
     volumes:
-      - "${STORAGE_DIR}/mongo-1:/data/db:Z"
+      - "${STORAGE_DIR}/mongo-1:/data/db:z"
     healthcheck:
       test: test $$(mongosh --port ${MONGO_1_PORT} --quiet --eval "try {rs.initiate({_id:'${MONGO_REPLICA_SET}',members:[{_id:0,host:\"mongo-1:${MONGO_1_PORT}\"}]})} catch(e) {rs.status().ok}") -eq 1
       interval: 10s
@@ -30,12 +37,12 @@ services:
   redis:
     depends_on:
       any-sync-init:
-        condition: service_completed_successfully
+        condition: service_healthy
     image: "redis/redis-stack-server:${REDIS_VERSION}"
     restart: unless-stopped
     command: ["redis-server", "--port", "${REDIS_PORT}", "--dir", "/data/", "--appendonly", "yes", "--maxmemory", "${REDIS_MAXMEMORY}", "--maxmemory-policy", "noeviction", "--protected-mode", "no", "--loadmodule", "/opt/redis-stack/lib/redisbloom.so"]
     volumes:
-      - "${STORAGE_DIR}/redis:/data:Z"
+      - "${STORAGE_DIR}/redis:/data:z"
     healthcheck:
       test: [ "CMD", "redis-cli", "--raw", "-p", "${REDIS_PORT}", "incr", "ping" ]
       interval: 10s
@@ -52,7 +59,7 @@ services:
       MINIO_ROOT_USER: "${AWS_ACCESS_KEY_ID}"
       MINIO_ROOT_PASSWORD: "${AWS_SECRET_ACCESS_KEY}"
     volumes:
-      - "${STORAGE_DIR}/minio:/data:Z"
+      - "${STORAGE_DIR}/minio:/data:z"
     healthcheck:
       test: bash -c ':> /dev/tcp/127.0.0.1/${MINIO_PORT}' || exit 1
       interval: 5s
@@ -81,30 +88,36 @@ services:
     image: "ghcr.io/anyproto/any-sync-coordinator:${ANY_SYNC_COORDINATOR_VERSION}"
     depends_on:
       any-sync-init:
-        condition: service_completed_successfully
+        condition: service_healthy
       mongo-1:
         condition: service_healthy
     volumes:
-      - ./etc/any-sync-coordinator:/etc/any-sync-coordinator:Z
+      - ./etc/any-sync-coordinator:/etc/any-sync-coordinator:z
     restart: "no"
-    command: ["/bin/any-sync-confapply", "-c", "/etc/any-sync-coordinator/config.yml", "-n", "/etc/any-sync-coordinator/network.yml", "-e"]
+    command: ["/bin/bash", "-c", "/bin/any-sync-confapply -c /etc/any-sync-coordinator/config.yml -n /etc/any-sync-coordinator/network.yml -e && touch /ok && sleep infinity"]
+    init: true
+    healthcheck:
+      test: test -f /ok
+      interval: 5s
+      timeout: 10s
+      retries: 3
 
   any-sync-coordinator:
     image: "ghcr.io/anyproto/any-sync-coordinator:${ANY_SYNC_COORDINATOR_VERSION}"
     depends_on:
       any-sync-init:
-        condition: service_completed_successfully
+        condition: service_healthy
       mongo-1:
         condition: service_healthy
       any-sync-coordinator_bootstrap:
-        condition: service_completed_successfully
+        condition: service_healthy
     ports:
       - "${ANY_SYNC_COORDINATOR_PORT}:${ANY_SYNC_COORDINATOR_PORT}"
       - "${ANY_SYNC_COORDINATOR_QUIC_PORT}:${ANY_SYNC_COORDINATOR_QUIC_PORT}/udp"
       - "${ANY_SYNC_COORDINATOR_METRIC_ADDR}:8000"
     volumes:
-      - ./etc/any-sync-coordinator:/etc/any-sync-coordinator:Z
-      - "${STORAGE_DIR}/networkStore/any-sync-coordinator:/networkStore:Z"
+      - ./etc/any-sync-coordinator:/etc/any-sync-coordinator:z
+      - "${STORAGE_DIR}/networkStore/any-sync-coordinator:/networkStore:z"
     deploy:
       resources:
         limits:
@@ -125,9 +138,9 @@ services:
       - "${ANY_SYNC_FILENODE_QUIC_PORT}:${ANY_SYNC_FILENODE_QUIC_PORT}/udp"
       - "${ANY_SYNC_FILENODE_METRIC_ADDR}:8000"
     volumes:
-      - ./etc/any-sync-filenode:/etc/any-sync-filenode:Z
+      - ./etc/any-sync-filenode:/etc/any-sync-filenode:z
       - ./etc/.aws:/root/.aws:ro
-      - "${STORAGE_DIR}/networkStore/any-sync-filenode:/networkStore:Z"
+      - "${STORAGE_DIR}/networkStore/any-sync-filenode:/networkStore:z"
     deploy:
       resources:
         limits:
@@ -145,11 +158,11 @@ services:
       - "${ANY_SYNC_NODE_1_API_SERVER_ADDR}:8080"
       - "${ANY_SYNC_NODE_1_METRIC_ADDR}:8000"
     volumes:
-      - ./etc/any-sync-node-1:/etc/any-sync-node:Z
+      - ./etc/any-sync-node-1:/etc/any-sync-node:z
       - ./etc/.aws:/root/.aws:ro
-      - "${STORAGE_DIR}/any-sync-node-1:/storage:Z"
-      - "${STORAGE_DIR}/anyStorage/any-sync-node-1:/anyStorage:Z"
-      - "${STORAGE_DIR}/networkStore/any-sync-node-1:/networkStore:Z"
+      - "${STORAGE_DIR}/any-sync-node-1:/storage:z"
+      - "${STORAGE_DIR}/anyStorage/any-sync-node-1:/anyStorage:z"
+      - "${STORAGE_DIR}/networkStore/any-sync-node-1:/networkStore:z"
     deploy:
       resources:
         limits:
@@ -167,11 +180,11 @@ services:
       - "${ANY_SYNC_NODE_2_API_SERVER_ADDR}:8080"
       - "${ANY_SYNC_NODE_2_METRIC_ADDR}:8000"
     volumes:
-      - ./etc/any-sync-node-2:/etc/any-sync-node:Z
+      - ./etc/any-sync-node-2:/etc/any-sync-node:z
       - ./etc/.aws:/root/.aws:ro
-      - "${STORAGE_DIR}/any-sync-node-2:/storage:Z"
-      - "${STORAGE_DIR}/anyStorage/any-sync-node-2:/anyStorage:Z"
-      - "${STORAGE_DIR}/networkStore/any-sync-node-2:/networkStore:Z"
+      - "${STORAGE_DIR}/any-sync-node-2:/storage:z"
+      - "${STORAGE_DIR}/anyStorage/any-sync-node-2:/anyStorage:z"
+      - "${STORAGE_DIR}/networkStore/any-sync-node-2:/networkStore:z"
     deploy:
       resources:
         limits:
@@ -189,11 +202,11 @@ services:
       - "${ANY_SYNC_NODE_3_API_SERVER_ADDR}:8080"
       - "${ANY_SYNC_NODE_3_METRIC_ADDR}:8000"
     volumes:
-      - ./etc/any-sync-node-3:/etc/any-sync-node:Z
+      - ./etc/any-sync-node-3:/etc/any-sync-node:z
       - ./etc/.aws:/root/.aws:ro
-      - "${STORAGE_DIR}/any-sync-node-3:/storage:Z"
-      - "${STORAGE_DIR}/anyStorage/any-sync-node-3:/anyStorage:Z"
-      - "${STORAGE_DIR}/networkStore/any-sync-node-3:/networkStore:Z"
+      - "${STORAGE_DIR}/any-sync-node-3:/storage:z"
+      - "${STORAGE_DIR}/anyStorage/any-sync-node-3:/anyStorage:z"
+      - "${STORAGE_DIR}/networkStore/any-sync-node-3:/networkStore:z"
     deploy:
       resources:
         limits:
@@ -210,8 +223,8 @@ services:
       - "${ANY_SYNC_CONSENSUSNODE_QUIC_PORT}:${ANY_SYNC_CONSENSUSNODE_QUIC_PORT}/udp"
       - "${ANY_SYNC_CONSENSUSNODE_METRIC_ADDR}:8000"
     volumes:
-      - ./etc/any-sync-consensusnode:/etc/any-sync-consensusnode:Z
-      - "${STORAGE_DIR}/networkStore/any-sync-consensusnode:/networkStore:Z"
+      - ./etc/any-sync-consensusnode:/etc/any-sync-consensusnode:z
+      - "${STORAGE_DIR}/networkStore/any-sync-consensusnode:/networkStore:z"
     deploy:
       resources:
         limits:
@@ -231,7 +244,7 @@ services:
       - any-sync-node-2
       - any-sync-node-3
     volumes:
-      - "${STORAGE_DIR}/docker-generateconfig:/conf:Z"
+      - "${STORAGE_DIR}/docker-generateconfig:/conf:z"
     entrypoint: ["/bin/sh", "-c"]
     command:
       - |

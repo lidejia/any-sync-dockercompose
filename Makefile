@@ -3,10 +3,10 @@
 # Check if the 's' flag (silent/quiet mode) is present in MAKEFLAGS
 ifeq ($(findstring s,$(MAKEFLAGS)),s)
 	QUIET_MODE := true
-	DOCKER_COMPOSE := docker compose --progress=quiet
+	DOCKER_COMPOSE := podman compose --progress=quiet
 else
 	QUIET_MODE := false
-	DOCKER_COMPOSE := docker compose
+	DOCKER_COMPOSE := podman compose
 endif
 
 # targets
@@ -23,7 +23,7 @@ stop:
 	$(DOCKER_COMPOSE) stop
 
 clean:
-	docker system prune --all --volumes
+	podman system prune --all --volumes
 
 pull:
 	$(DOCKER_COMPOSE) pull
@@ -45,4 +45,4 @@ STORAGE_DIR := $(shell grep -m1 '^STORAGE_DIR=' .env 2>/dev/null | cut -d= -f2- 
 STORAGE_DIR := $(if $(STORAGE_DIR),$(STORAGE_DIR),./storage)
 
 cleanEtcStorage:
-	rm -rf etc/ $(STORAGE_DIR)
+	rm -rf etc/ $(STORAGE_DIR) /var/lib/anytype
